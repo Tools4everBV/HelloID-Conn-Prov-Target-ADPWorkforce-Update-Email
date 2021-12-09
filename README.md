@@ -58,6 +58,10 @@ APD will register an application that's allowed to access the specified API's. _
 
 ### Remarks
 
+#### CustomField `Custom.AssociateOID`
+
+This connector uses the `Custom.AssociateOID` field from HelloID. This field must be created and mapped in the HelloID ADP Workforce source connector.
+
 #### EmailAddress
 
 This connector is meant to update the emailAddress for a worker in ADP Workforce
