@@ -48,5 +48,14 @@
         "description": "The password for the *.pfx certificate",
         "required": true
       }
+    },
+  {
+    "key": "IsDebug",
+    "type": "checkbox",
+    "defaultValue": true,
+    "templateOptions": {
+      "label": "If switched, the debug / verbose logging will be displayed.",
+      "required": false
     }
+  }
   ]
