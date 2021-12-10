@@ -34,7 +34,8 @@ The following settings are required to connect to the ADP Workforce:
 | ClientID     | The ClientID for the ADP Workforce environment. This will be provided by ADP | Yes |
 | ClientSecret | The ClientSecret for the ADP Workforce environment. This will be provided by ADP | Yes |
 | CertificatePath | The location to the 'private key of the x.509 certificate' on the server where the HelloID agent and provisioning agent are running. Make sure to use the private key for the certificate that's used to generate a ClientID and ClientSecret and for activating the required API's | Yes |
-| CertificatePassword | The password for the *.pfx certificat | Yes |
+| CertificatePassword | The password for the *.pfx certificate | Yes |
+| Toggle debug logging | When toggled, debug logging will be displayed | No |
 
 ### Prerequisites
 
