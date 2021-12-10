@@ -7,7 +7,7 @@
 $config = $configuration | ConvertFrom-Json
 $p = $person | ConvertFrom-Json
 $success = $false
-$auditLogs = New-Object Collections.Generic.List[PSCustomObject]
+$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
 
 # Mapping
 $account = @{
