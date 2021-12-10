@@ -3,8 +3,6 @@
 #
 # Version: 1.0.0
 ############################################################
-$VerbosePreference = "Continue"
-
 # Initialize default value's
 $config = $configuration | ConvertFrom-Json
 $p = $person | ConvertFrom-Json
@@ -17,6 +15,17 @@ $account = @{
     workerId    = $p.ExternalId
     workerEmail = $p.Contact.Business.Email
 }
+
+#region debug logging
+switch ($($config.IsDebug)) {
+    $true {
+        $VerbosePreference = "Continue"
+    }
+    $false {
+        $VerbosePreference = "SilentyContinue"
+    }
+}
+#endregion
 
 #region functions
 function Get-ADPAccessToken {
