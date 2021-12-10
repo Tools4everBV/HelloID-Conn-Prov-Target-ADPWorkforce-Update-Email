@@ -18,10 +18,10 @@ $account = @{
 #region debug logging
 switch ($($config.IsDebug)) {
     $true {
-        $VerbosePreference = "Continue"
+        $VerbosePreference = 'Continue'
     }
     $false {
-        $VerbosePreference = "SilentyContinue"
+        $VerbosePreference = 'SilentyContinue'
     }
 }
 #endregion
@@ -45,12 +45,12 @@ function Get-ADPAccessToken {
 
     try {
         $splatRestMethodParameters = @{
-            Uri         = 'https://accounts.eu.adp.com/auth/oauth/v2/token'
-            Method      = 'POST'
-            Headers     = @{
+            Uri     = 'https://accounts.eu.adp.com/auth/oauth/v2/token'
+            Method  = 'POST'
+            Headers = @{
                 "content-type" = "application/x-www-form-urlencoded"
             }
-            Body        = @{
+            Body = @{
                 client_id     = $ClientID
                 client_secret = $ClientSecret
                 grant_type    = 'client_credentials'
@@ -119,6 +119,7 @@ try {
 
     # Add an auditMessage showing what will happen during enforcement
     if ($dryRun -eq $true){
+        Write-Verbose $msg
         $auditLogs.Add([PSCustomObject]@{
             Message = $msg
             IsError = $false
