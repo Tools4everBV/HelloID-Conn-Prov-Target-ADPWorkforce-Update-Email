@@ -57,6 +57,10 @@ The public key belonging to the certificate, must be send ADP. ADP will then gen
 
 ### Remarks
 
+#### create.ps1
+
+The `create.ps1` does not create accounts but merely correlates a HelloID person with a ADP Worker and updates the emailaddress if nessecarry.
+
 #### CustomField `Custom.AssociateOID`
 
 This connector uses the `Custom.AssociateOID` field from HelloID. This field must be created and mapped in the HelloID ADP Workforce source connector.
