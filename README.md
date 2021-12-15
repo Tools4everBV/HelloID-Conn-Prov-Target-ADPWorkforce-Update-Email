@@ -18,7 +18,7 @@
 
 _HelloID-Conn-Prov-Target-ADPWorkforce-UpdateEmail_ is a _target_ connector. ADP Workforce provides a set of REST API's that allow you to programmatically interact with it's data.
 
-> This connector only updates the email address for a worker
+> This connector only updates the email address for a worker and makes use of a specific event to the ADP API's
 
 ## Getting started
 
@@ -47,15 +47,13 @@ The following settings are required to connect to the ADP Workforce:
 
 - The 'Execute on-premises' switch on the 'System' tab is toggled.
 
+> The emailaddress is updated using a POST call to: https://api.eu.adp.com/events/hr/v1/worker.businesscommunication.email.change. Additional rights to this endpoint are not required. 
+
 #### X.509 certificate / public key
 
 To obtain access to the ADP Workforce API's, a x.509 certificate is needed. This certificate has to be created by the customer.
 
 The public key belonging to the certificate, must be send ADP. ADP will then generate a ClientID and ClientSecret and will activate the required API's.
-
-There are a few options for creating certificates. One of them being the 'OpenSSL' utility. Available on Linux/Windows. https://www.openssl.org/
-
-APD will register an application that's allowed to access the specified API's. _worker-demographics_ and _organizational_departments_. Other API's within your ADP Workforce environment may not be accessible.
 
 ### Remarks
 
