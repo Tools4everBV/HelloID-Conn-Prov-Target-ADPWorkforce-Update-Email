@@ -1,7 +1,7 @@
 ############################################################
 # HelloID-Conn-Prov-Target-ADPWorkforce-UpdateEmail-Update
 #
-# Version: 1.0.0
+# Version: 1.0.1
 ############################################################
 # Initialize default value's
 $config = $configuration | ConvertFrom-Json
@@ -13,7 +13,7 @@ $auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
 # Mapping
 $account = @{
     workerId    = $p.ExternalId
-    workerEmail = $p.Contact.Business.Email
+    workerEmail = $p.Accounts.ActiveDirectory.mail
 }
 
 #region debug logging
@@ -46,12 +46,12 @@ function Get-ADPAccessToken {
 
     try {
         $splatRestMethodParameters = @{
-            Uri     = 'https://accounts.eu.adp.com/auth/oauth/v2/token'
-            Method  = 'POST'
-            Headers = @{
+            Uri         = 'https://accounts.eu.adp.com/auth/oauth/v2/token'
+            Method      = 'POST'
+            Headers     = @{
                 "content-type" = "application/x-www-form-urlencoded"
             }
-            Body = @{
+            Body        = @{
                 client_id     = $ClientID
                 client_secret = $ClientSecret
                 grant_type    = 'client_credentials'
@@ -59,7 +59,8 @@ function Get-ADPAccessToken {
             Certificate = $certificate
         }
         Invoke-RestMethod @splatRestMethodParameters
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($PSItem)
     }
 }
@@ -82,7 +83,8 @@ function Resolve-HTTPError {
         }
         if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
             $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
             $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
         }
         Write-Output $httpErrorObj
@@ -93,44 +95,41 @@ function Resolve-HTTPError {
 try {
     # Begin
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
-    $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($($config.CertificatePath), $(config.CertificatePassword))
+    $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($($config.CertificatePath), $($config.CertificatePassword))
     $accessToken = Get-ADPAccessToken -ClientID $($config.ClientID) -ClientSecret $($config.ClientSecret) -Certificate $certificate
 
+    $headers = @{
+        "Authorization" = "Bearer $($accessToken.access_token)"
+    }
+
+    
     Write-Verbose "Verify if ADPWorkforce account for: [$($p.DisplayName)] exists"
     $splatParams = @{
-        Url         = "$($config.BaseUrl)/hr/v2/worker-demographics/$aRef"
+        Uri         = "$($config.BaseUrl)/hr/v2/worker-demographics/$aRef"
         Method      = 'GET'
-        AccessToken = $accessToken.access_token
+        Headers     = $headers
         Certificate = $certificate
     }
     $responseGetUser = Invoke-RestMethod @splatParams
 
-    if ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -ne $p.Contact.Business.Email){
+    if ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -ne $account.workerEmail) {
         $action = 'Update'
-        $msg = "$action ADPWorkforce eMailAddress: [$($p.Contact.Business.Email)] for: [$($p.DisplayName)] will be executed during enforcement"
-    } elseif ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -eq $p.Contact.Business.Email){
+        $msg = "$action ADPWorkforce E-mail address: [$($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri)] to [$($account.workerEmail)] for: [$($p.DisplayName)] will be executed during enforcement"
+    }
+    elseif ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -eq $account.workerEmail) {
         $action = 'Exit'
-        $msg = "eMailAddress: [$($p.Contact.Business.Email)] for: [$($p.DisplayName)] does not require an update"
+        $msg = "E-mail address: [$($account.workerEmail)] for: [$($p.DisplayName)] does not require an update"
     }
 
-    # Add an auditMessage showing what will happen during enforcement
-    if ($dryRun -eq $true){
-        Write-Verbose $msg
-        $auditLogs.Add([PSCustomObject]@{
-            Message = $msg
-        })
-    }
-
-    if (-not($dryRun -eq $true)) {
-        switch ($action){
-            'Update' {
-                Write-Verbose "Updating ADPWorkforce account: [$($aRef)] for: [$($p.DisplayName)]"
-                $body = @{
-                    events = @(@{
+    switch ($action) {
+        'Update' {
+            Write-Verbose "Updating ADPWorkforce account: [$($aRef)] for: [$($p.DisplayName)]"
+            $body = @{
+                events = @(@{
                         eventNameCode = @{
                             codeValue = 'worker.businessCommunication.email.change'
                         }
-                        data = @{
+                        data          = @{
                             eventContext = @{
                                 worker = @{
                                     workerID = @{
@@ -138,7 +137,7 @@ try {
                                     }
                                 }
                             }
-                            transform = @{
+                            transform    = @{
                                 worker = @{
                                     businessCommunication = @{
                                         email = @{
@@ -149,53 +148,58 @@ try {
                             }
                         }
                     })
-                } | ConvertTo-Json -Depth 10
+            } | ConvertTo-Json -Depth 10
 
-                $splatParams = @{
-                    Url         = "$($config.BaseUrl)/events/hr/v1/worker.business-communication.email.change"
-                    Method      = 'POST'
-                    Body        = $body
-                    AccessToken = $accessToken.access_token
-                    Certificate = $certificate
-                    ContentType = 'application/json'
-                }
+            $splatParams = @{
+                Uri         = "$($config.BaseUrl)/events/hr/v1/worker.business-communication.email.change"
+                Method      = 'POST'
+                Body        = $body
+                Headers     = $headers
+                Certificate = $certificate
+                ContentType = 'application/json'
+            }
+            if (-not($dryRun -eq $true)) {
                 $responseUpdateUser = Invoke-RestMethod @splatParams
-                if ($responseUpdateUser.events[0].eventStatusCode.codeValue -eq 'submitted'){
+                if ($responseUpdateUser.events[0].eventStatusCode.codeValue -eq 'submitted') {
                     $accountReference = $responseGetUser.Workers[0].associateOID
                     $success = $true
                     $auditLogs.Add([PSCustomObject]@{
-                        Message = "Updated emailAddress for: $($p.DisplayName)"
-                        IsError = $false
-                    })
+                            Message = "Updated E-mail address for: $($p.DisplayName) from: [$($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri)] to: [$($account.workerEmail)]"
+                            IsError = $false
+                        })
                 }
             }
+        }
 
-            'Exit' {
-                $success = $true
-                $auditLogs.Add([PSCustomObject]@{
+        'Exit' {
+            $success = $true
+            $auditLogs.Add([PSCustomObject]@{
                     Message = $msg
                     IsError = $false
                 })
-                break
-            }
+            break
         }
     }
-} catch {
+    
+}
+catch {
     $success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
-    $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-HTTPError -ErrorObject $ex
-        $errorMessage = "Could not update ADPWorkforce emailAddress for: [$($p.DisplayName)]. Error: $($errorObj.ErrorMessage)"
-    } else {
-        $errorMessage = "Could not update ADPWorkforce emailAddress for: [$($p.DisplayName)]. Error: $($ex.Exception.Message)"
+        $errorMessage = "Could not update ADPWorkforce E-mail address for: [$($p.DisplayName)]. Error: $($errorObj.ErrorMessage)"
+    }
+    else {
+        $errorMessage = "Could not update ADPWorkforce E-mail address for: [$($p.DisplayName)]. Error: $($ex.Exception.Message)"
     }
     Write-Verbose $errorMessage
     $auditLogs.Add([PSCustomObject]@{
-        Message = $errorMessage
-        IsError = $true
-    })
-} finally {
+            Message = $errorMessage
+            IsError = $true
+        })
+}
+finally {
     $result = [PSCustomObject]@{
         Success   = $success
         Account   = $account

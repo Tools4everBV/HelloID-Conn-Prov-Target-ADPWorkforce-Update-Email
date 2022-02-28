@@ -53,7 +53,9 @@ The following settings are required to connect to the ADP Workforce:
 
 - The 'Execute on-premises' switch on the 'System' tab is toggled.
 
-> The emailaddress is updated using a POST call to: https://api.eu.adp.com/events/hr/v1/worker.businesscommunication.email.change. Additional rights to this endpoint are not required. 
+- Additional rights to worker.businesscommunication.email.change
+
+> The emailaddress is updated using a POST call to: https://api.eu.adp.com/events/hr/v1/worker.businesscommunication.email.change. additional rights to this endpoint is required and should be requested by the customer at customer support of ADP.
 
 #### X.509 certificate / public key
 
