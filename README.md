@@ -79,14 +79,14 @@ The `create.ps1` does not create accounts but merely correlates a HelloID person
 This connector uses the `Custom.AssociateOID` field from HelloID. This field must be created and mapped in the HelloID ADP Workforce source connector.
 
 ### Mapping
-The mandatory and recommended field mapping is listed below. An export of the mapping can be found in mapping.json.
+The mandatory and recommended field mapping is listed below. An export of the mapping can be found in MappingADPWorkforceUpdateEmail.json.
 
 | Name           | Create | Enable | Update | Disable | Delete | Store in account data | Used in Notification | Default mapping                            | Mandatory | Comment                                        |
 | -------------- | ------ | ------ | ------ | ------- | ------ | ------ | --------------------- | ------------------------------------------ | --------- | ---------------------------------------------- |
 | AssociateOID     | X      |        | X      |         |        | No            | No | Custom.AssociateOID       |   Yes     | AssociateOID from ADP | 
 | workerEmail | X      |        | X      |         |        | No  |  No| Emailaddress generated  |   Yes     | Generated email address |
 | workerId           | X       |        | X      |         |        | Yes              |  Yes   | ExternalID | Yes          | ExternalID from person  |
-
+ 
 
 #### EmailAddress
 

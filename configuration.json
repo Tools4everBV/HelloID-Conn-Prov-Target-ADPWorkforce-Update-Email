@@ -21,7 +21,7 @@
     },
     {
       "key": "ClientSecret",
-      "type": "input",
+      "type": "input", 
       "templateOptions": {
         "label": "ClientSecret",
         "type": "password",
