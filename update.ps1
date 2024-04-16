@@ -8,9 +8,6 @@
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
-#TEST
-$actionContext.References.Account = "ADPNL02347137"
-
 #region functions
 function Get-ADPAccessToken {
     [CmdletBinding()]
