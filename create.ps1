@@ -1,32 +1,12 @@
 ############################################################
 # HelloID-Conn-Prov-Target-ADPWorkforce-UpdateEmail-Create
+# PowerShell V2
 #
-# Version: 1.0.1
+# Version: 2.0.1
 ############################################################
-# Initialize default value's
-$config = $configuration | ConvertFrom-Json
-$p = $person | ConvertFrom-Json
-$success = $false
 
-$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
-
-# Mapping
-$account = @{
-    workerId    = $p.ExternalId
-    workerEmail = $p.Accounts.ActiveDirectory.mail
-}
-
-#region debug logging
-switch ($($config.IsDebug)) {
-    $true {
-        $VerbosePreference = 'Continue'
-    }
-    $false {
-        $VerbosePreference = 'SilentyContinue'
-    }
-}
-#endregion
-
+# Enable TLS1.2
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
 #region functions
 function Get-ADPAccessToken {
@@ -93,54 +73,84 @@ function Resolve-HTTPError {
 }
 #endregion
 
+
 try {
-    # Begin
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
-    $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($config.CertificatePath, $config.CertificatePassword)
-    $accessToken = Get-ADPAccessToken -ClientID $($config.ClientID) -ClientSecret $($config.ClientSecret) -Certificate $certificate
+    # Initial Assignments
+    $outputContext.AccountReference = 'Currently not available'
+
+    # Validate correlation configuration
+    if ($actionContext.CorrelationConfiguration.Enabled) {
+        $correlationField = $actionContext.CorrelationConfiguration.accountField
+        $correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
+
+        if ([string]::IsNullOrEmpty($($correlationField))) {
+            throw 'Correlation is enabled but not configured correctly'
+        }
+        if ([string]::IsNullOrEmpty($($correlationValue))) {
+            throw 'Correlation is enabled but [accountFieldValue] is empty. Please make sure it is correctly mapped'
+        }
+
+        # Verify if a user must be either [created] or just [correlated]
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+        $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($actionContext.Configuration.CertificatePath, $actionContext.Configuration.CertificatePassword)
+        $accessToken = Get-ADPAccessToken -ClientID $($actionContext.Configuration.ClientID) -ClientSecret $($actionContext.Configuration.ClientSecret) -Certificate $certificate
+        
+        $headers = @{
+            "Authorization" = "Bearer $($accessToken.access_token)"
+        }
     
-    $headers = @{
-        "Authorization" = "Bearer $($accessToken.access_token)"
-    }
-
-    Write-Verbose "Verify if ADPWorkforce account for: [$($p.DisplayName)] exists"
- 
-    $splatParams = @{
-        Uri         = "$($config.BaseUrl)/hr/v2/worker-demographics/$($p.Custom.AssociateOID)"
-        Method      = 'GET'
-        Headers     = $headers
-        Certificate = $certificate
-    }
-    $responseGetUser = Invoke-RestMethod @splatParams
-
-    if ($responseGetUser.Workers[0].associateOID -eq $($p.Custom.AssociateOID)) {
-        # If the E-mail address in HelloID matches with the E-mail address in ADPWorkforce -> Correlate
-        Write-Verbose "Verifying if the E-mail address for: [$($p.DisplayName)] must be updated"
-        if ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -eq $account.workerEmail) {
-            $action = 'Correlate'
-            # If the E-mail address in HelloID differs from the E-mail address in ADPWorkforce -> Correlate-Update
+        Write-Verbose "Verify if ADPWorkforce account for: [$($personContext.Person.DisplayName)] exists"
+     
+        $splatParams = @{
+            Uri         = "$($actionContext.Configuration.BaseUrl)/hr/v2/worker-demographics/$($correlationValue)"
+            Method      = 'GET'
+            Headers     = $headers
+            Certificate = $certificate
         }
-        elseif ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -ne $account.workerEmail) {
-            $action = 'Correlate-Update'
+        $responseGetUser = Invoke-RestMethod @splatParams
+
+        if ($responseGetUser.Workers[0].associateOID -eq $($correlationValue)) {
+            # If the E-mail address in HelloID matches with the E-mail address in ADPWorkforce -> Correlate
+            Write-Verbose "Verifying if the E-mail address for: [$($personContext.Person.DisplayName)] must be updated"
+            if ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -eq $actionContext.Data.workerEmail) {
+                $action = 'Correlate'
+            } # If the E-mail address in HelloID differs from the E-mail address in ADPWorkforce -> CorrelateUpdate
+            elseif ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -ne $actionContext.Data.workerEmail) {
+                $action = 'CorrelateUpdate'
+            }
         }
+        $correlatedAccount = $responseGetUser
     }
 
+    if ($null -ne $correlatedAccount) {
+        $action = 'CorrelateAccount'
+    } else {
+        $action = 'CreateAccount'
+    }
+
+    # Add a message and the result of each of the validations showing what will happen during enforcement
+    if ($actionContext.DryRun -eq $true) {
+        Write-Information "[DryRun] $action ADPWorkforce account for: [$($personContext.Person.DisplayName)], will be executed during enforcement"
+        $outputContext.Success = $true
+    }
 
     # Process
+    if (-not($actionContext.DryRun -eq $true)) {
     switch ($action) {
         'Correlate' {
-            Write-Verbose "Correlating ADPWorkforce account for: [$($p.DisplayName)]"
-            $accountReference = $responseGetUser.Workers[0].associateOID
-            $success = $true
-            $auditLogs.Add([PSCustomObject]@{
-                    Message = "Correlated ADPWorkforce account for: $($p.DisplayName) - does not require an update"
+            Write-Verbose "Correlating ADPWorkforce account for: [$($personContext.Person.DisplayName)]"
+            $outputContext.AccountReference = $responseGetUser.Workers[0].associateOID
+            $outputContext.success = $true
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Action  = $action
+                    Message = "Correlated ADPWorkforce account for: $($personContext.Person.DisplayName) - does not require an update"
                     IsError = $false
                 })
             break
         }
 
         'Correlate-Update' {
-            Write-Verbose "Correlating and updating ADPWorkforce account for: [$($p.DisplayName)]"
+            Write-Verbose "Correlating and updating ADPWorkforce account for: [$($personContext.Person.DisplayName)]"
             $body = @{
                 events = @(@{
                         eventNameCode = @{
@@ -150,7 +160,7 @@ try {
                             eventContext = @{
                                 worker = @{
                                     workerID = @{
-                                        idValue = $account.workerId
+                                        idValue = $actionContext.Data.workerId
                                     }
                                 }
                             }
@@ -158,7 +168,7 @@ try {
                                 worker = @{
                                     businessCommunication = @{
                                         email = @{
-                                            emailUri = $account.workerEmail
+                                            emailUri = $actionContext.Data.workerEmail
                                         }
                                     }
                                 }
@@ -168,53 +178,42 @@ try {
             } | ConvertTo-Json -Depth 10
 
             $splatParams = @{
-                Uri         = "$($config.BaseUrl)/events/hr/v1/worker.business-communication.email.change"
+                Uri         = "$($actionContext.Configuration.BaseUrl)/events/hr/v1/worker.business-communication.email.change"
                 Method      = 'POST'
                 Body        = $body
                 Headers     = $headers
                 Certificate = $certificate
                 ContentType = 'application/json'
             }
+
             if (-not($dryRun -eq $true)) {
                 $responseUpdateUser = Invoke-RestMethod @splatParams
                 if ($responseUpdateUser.events[0].eventStatusCode.codeValue -eq 'submitted') {
-                    $accountReference = $responseGetUser.Workers[0].associateOID
-                    $success = $true
-                    $auditLogs.Add([PSCustomObject]@{
-                            Message = "Correlated ADPWorkforce account and updated E-mail address for: $($p.DisplayName) from: [$($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri)] to: [$($account.workerEmail)]"
+                    $outputContext.AccountReference = $responseGetUser.Workers[0].associateOID
+                    $outputContext.success = $true
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            Action  = $action
+                            Message = "Correlated ADPWorkforce account and updated E-mail address for: $($personContext.Person.DisplayName) from: [$($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri)] to: [$($actionContext.Data.workerEmail)]"
                             IsError = $false
                         })
                 }
             }
         }
-    }
-
-}
-catch {
-    Write-Verbose "$($_)" -verbose
-    $success = $false
+    }}
+} catch {
+    $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObj = Resolve-HTTPError -ErrorObject $ex
-        $errorMessage = "Could not $action ADPWorkforce E-mail address account for: [$($p.DisplayName)]. Error: $($errorObj.ErrorMessage)"
+        $errorObj = Resolve-{connectorName}Error -ErrorObject $ex
+        $auditMessage = "Could not update or correlate ADP-UpdateEmail account. Error: $($errorObj.FriendlyMessage)"
+        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+    } else {
+        $auditMessage = "Could not update or correlate ADP-UpdateEmail account. Error: $($ex.Exception.Message)"
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-    else {
-        $errorMessage = "Could not $action ADPWorkforce E-mail address account for: [$($p.DisplayName)]. Error: $($ex.Exception.Message)"
-    }
-    Write-Verbose $errorMessage
-    $auditLogs.Add([PSCustomObject]@{
-            Message = $errorMessage
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Message = $auditMessage
             IsError = $true
         })
-    # End
-}
-finally {
-    $result = [PSCustomObject]@{
-        Success          = $success
-        AccountReference = $accountReference
-        Auditlogs        = $auditLogs
-        Account          = $account
-    }
-    Write-Output $result | ConvertTo-Json -Depth 10
 }
