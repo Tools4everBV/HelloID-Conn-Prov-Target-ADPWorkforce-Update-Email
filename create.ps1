@@ -47,26 +47,37 @@ function Get-ADPAccessToken {
 }
 
 
-function Resolve-HTTPError {
+function Resolve-ADPWorkforceError {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
+        [Parameter(Mandatory)]
+        [object]
+        $ErrorObject
     )
     process {
         $httpErrorObj = [PSCustomObject]@{
-            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
-            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
-            RequestUri            = $ErrorObject.TargetObject.RequestUri
-            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
-            ErrorMessage          = ''
+            ScriptLineNumber = $ErrorObject.InvocationInfo.ScriptLineNumber
+            Line             = $ErrorObject.InvocationInfo.Line
+            ErrorDetails     = $ErrorObject.Exception.Message
+            FriendlyMessage  = $ErrorObject.Exception.Message
         }
-        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
-            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
+        if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
+            $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
         } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
-            $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+            if ($null -ne $ErrorObject.Exception.Response) {
+                $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+                if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
+                    $httpErrorObj.ErrorDetails = $streamReaderResponse
+                }
+            }
+        }
+        try {
+            $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
+            # Make sure to inspect the error result object and add only the error message as a FriendlyMessage.
+            # $httpErrorObj.FriendlyMessage = $errorDetailsObject.message
+            $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails # Temporarily assignment
+        } catch {
+            $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
         Write-Output $httpErrorObj
     }
@@ -109,23 +120,18 @@ try {
         }
         $responseGetUser = Invoke-RestMethod @splatParams
 
+
         if ($responseGetUser.Workers[0].associateOID -eq $($correlationValue)) {
             # If the E-mail address in HelloID matches with the E-mail address in ADPWorkforce -> Correlate
-            Write-Verbose "Verifying if the E-mail address for: [$($personContext.Person.DisplayName)] must be updated"
+            Write-Verbose "Verifying if the E-mail address for: [$($personContext.Person.DisplayName)] must be updated" -verbose
             if ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -eq $actionContext.Data.workerEmail) {
                 $action = 'Correlate'
             } # If the E-mail address in HelloID differs from the E-mail address in ADPWorkforce -> CorrelateUpdate
             elseif ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -ne $actionContext.Data.workerEmail) {
-                $action = 'CorrelateUpdate'
+                $action = 'Correlate-Update'
             }
         }
         $correlatedAccount = $responseGetUser
-    }
-
-    if ($null -ne $correlatedAccount) {
-        $action = 'CorrelateAccount'
-    } else {
-        $action = 'CreateAccount'
     }
 
     # Add a message and the result of each of the validations showing what will happen during enforcement
@@ -133,7 +139,7 @@ try {
         Write-Information "[DryRun] $action ADPWorkforce account for: [$($personContext.Person.DisplayName)], will be executed during enforcement"
         $outputContext.Success = $true
     }
-
+    
     # Process
     if (-not($actionContext.DryRun -eq $true)) {
     switch ($action) {
@@ -142,7 +148,6 @@ try {
             $outputContext.AccountReference = $responseGetUser.Workers[0].associateOID
             $outputContext.success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Action  = $action
                     Message = "Correlated ADPWorkforce account for: $($personContext.Person.DisplayName) - does not require an update"
                     IsError = $false
                 })
@@ -192,7 +197,6 @@ try {
                     $outputContext.AccountReference = $responseGetUser.Workers[0].associateOID
                     $outputContext.success = $true
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            Action  = $action
                             Message = "Correlated ADPWorkforce account and updated E-mail address for: $($personContext.Person.DisplayName) from: [$($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri)] to: [$($actionContext.Data.workerEmail)]"
                             IsError = $false
                         })
@@ -205,7 +209,7 @@ try {
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObj = Resolve-{connectorName}Error -ErrorObject $ex
+        $errorObj = Resolve-ADPWorkforceError -ErrorObject $ex
         $auditMessage = "Could not update or correlate ADP-UpdateEmail account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     } else {
@@ -216,4 +220,5 @@ try {
             Message = $auditMessage
             IsError = $true
         })
-} 
+}
+#final
