@@ -96,7 +96,7 @@ try {
     }
     
     # Create empty variable to store email used for logging.
-    $previousEmail = ""
+    $previousEmail = "empty"
 
     Write-Information "Verifying if a ADPWorkfroce account for [$($personContext.Person.DisplayName)] exists"
     
@@ -205,7 +205,7 @@ try {
                         $outputContext.AccountReference = $responseGetUser.Workers[0].associateOID
                         $outputContext.Success = $true
                         $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                Message = "Updated E-mail address for: $($personContext.Person.DisplayName) from: $($previousEmail) to: [$($actionContext.Data.workerEmail)]"
+                                Message = "Updated E-mail address for: $($personContext.Person.DisplayName) from: [$($previousEmail)] to: [$($actionContext.Data.workerEmail)]"
                                 IsError = $false
                             })
                     }
