@@ -93,7 +93,7 @@ try {
     $outputContext.AccountReference = 'Currently not available'
 
     # Create empty variable to store email used for logging.
-    $previousEmail = ""
+    $previousEmail = "empty"
 
     # Validate correlation configuration
     if ($actionContext.CorrelationConfiguration.Enabled) {
@@ -210,7 +210,7 @@ try {
                     $outputContext.AccountReference = $responseGetUser.Workers[0].associateOID
                     $outputContext.success = $true
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            Message = "Correlated ADPWorkforce account and updated E-mail address for: $($personContext.Person.DisplayName) from: $($previousEmail) to: [$($actionContext.Data.workerEmail)]"
+                            Message = "Correlated ADPWorkforce account and updated E-mail address for: $($personContext.Person.DisplayName) from: [$($previousEmail)] to: [$($actionContext.Data.workerEmail)]"
                             IsError = $false
                         })
                 }
