@@ -92,6 +92,9 @@ try {
     # Initial Assignments
     $outputContext.AccountReference = 'Currently not available'
 
+    # Create empty variable to store email used for logging.
+    $previousEmail = ""
+
     # Validate correlation configuration
     if ($actionContext.CorrelationConfiguration.Enabled) {
         $correlationField = $actionContext.CorrelationConfiguration.accountField
@@ -123,18 +126,25 @@ try {
         }
         $responseGetUser = Invoke-RestMethod @splatParams
 
-
         if ($responseGetUser.Workers[0].associateOID -eq $($correlationValue)) {
-            # If the E-mail address in HelloID matches with the E-mail address in ADPWorkforce -> Correlate
-            Write-Verbose "Verifying if the E-mail address for: [$($personContext.Person.DisplayName)] must be updated" -verbose
-            if ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -eq $actionContext.Data.workerEmail) {
-                $action = 'Correlate'
-            } # If the E-mail address in HelloID differs from the E-mail address in ADPWorkforce -> CorrelateUpdate
-            elseif ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -ne $actionContext.Data.workerEmail) {
+            if ($null -ne $responseGetUser.Workers[0].businessCommunication -and $null -ne $responseGetUser.Workers[0].businessCommunication.emails) {
+                # Update previousEmail, used in notifications
+                $previousEmail = $responseGetUser.Workers[0].businessCommunication.emails[0].emailUri
+                
+                # If the E-mail address in HelloID matches with the E-mail address in ADPWorkforce -> Correlate
+                Write-Verbose "Verifying if the E-mail address for: [$($personContext.Person.DisplayName)] must be updated" -verbose
+                if ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -eq $actionContext.Data.workerEmail) {
+                    $action = 'Correlate'
+                } # If the E-mail address in HelloID differs from the E-mail address in ADPWorkforce -> CorrelateUpdate
+                elseif ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -ne $actionContext.Data.workerEmail) {
+                    $action = 'Correlate-Update'
+                }
+            } else {
+                # If email is not available in the response, the email is most likely empty, and we need a Correlate-Update
                 $action = 'Correlate-Update'
             }
+            $correlatedAccount = $responseGetUser
         }
-        $correlatedAccount = $responseGetUser
     }
 
     # Add a message and the result of each of the validations showing what will happen during enforcement
@@ -200,7 +210,7 @@ try {
                     $outputContext.AccountReference = $responseGetUser.Workers[0].associateOID
                     $outputContext.success = $true
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            Message = "Correlated ADPWorkforce account and updated E-mail address for: $($personContext.Person.DisplayName) from: [$($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri)] to: [$($actionContext.Data.workerEmail)]"
+                            Message = "Correlated ADPWorkforce account and updated E-mail address for: $($personContext.Person.DisplayName) from: $($previousEmail) to: [$($actionContext.Data.workerEmail)]"
                             IsError = $false
                         })
                 }
