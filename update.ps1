@@ -94,6 +94,9 @@ try {
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
         throw 'The account reference could not be found'
     }
+    
+    # Create empty variable to store email used for logging.
+    $previousEmail = ""
 
     Write-Information "Verifying if a ADPWorkfroce account for [$($personContext.Person.DisplayName)] exists"
     
@@ -112,13 +115,20 @@ try {
         }
         $responseGetUser = Invoke-RestMethod @splatParams
 
-    if ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -ne $actionContext.Data.workerEmail) {
+    if ($null -ne $responseGetUser.Workers[0].businessCommunication -and $null -ne $responseGetUser.Workers[0].businessCommunication.emails) {
+        # Update previousEmail, used in notifications
+        $previousEmail = $responseGetUser.Workers[0].businessCommunication.emails[0].emailUri
+        if ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -ne $actionContext.Data.workerEmail) {
+            $action = 'Update'
+            $msg = "$action ADPWorkforce E-mail address: [$($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri)] to [$($actionContext.Data.workerEmail)] for: [$($personContext.Person.DisplayName)] will be executed during enforcement"
+        }
+        elseif ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -eq $actionContext.Data.workerEmail) {
+            $action = 'Exit'
+            $msg = "E-mail address: [$($actionContext.Data.workerEmail)] for: [$($personContext.Person.DisplayName)] does not require an update"
+        }
+    } else {
         $action = 'Update'
-        $msg = "$action ADPWorkforce E-mail address: [$($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri)] to [$($actionContext.Data.workerEmail)] for: [$($personContext.Person.DisplayName)] will be executed during enforcement"
-    }
-    elseif ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -eq $actionContext.Data.workerEmail) {
-        $action = 'Exit'
-        $msg = "E-mail address: [$($actionContext.Data.workerEmail)] for: [$($personContext.Person.DisplayName)] does not require an update"
+        $msg = "$action ADPWorkforce E-mail address empty. Updating E-mail address to [$($actionContext.Data.workerEmail)] for: [$($personContext.Person.DisplayName)] will be executed during enforcement"
     }
 
 
@@ -195,7 +205,7 @@ try {
                         $outputContext.AccountReference = $responseGetUser.Workers[0].associateOID
                         $outputContext.Success = $true
                         $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                Message = "Updated E-mail address for: $($personContext.Person.DisplayName) from: [$($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri)] to: [$($actionContext.Data.workerEmail)]"
+                                Message = "Updated E-mail address for: $($personContext.Person.DisplayName) from: $($previousEmail) to: [$($actionContext.Data.workerEmail)]"
                                 IsError = $false
                             })
                     }
