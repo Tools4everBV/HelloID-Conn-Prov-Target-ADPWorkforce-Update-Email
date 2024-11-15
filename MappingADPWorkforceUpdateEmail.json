@@ -46,7 +46,7 @@
             "Update"
           ],
           "MappingMode": "Fixed",
-          "Value": "\"s.vandijk@tools4ever.com\"",
+          "Value": "\"function getValue() {\\r\\n    return Person.Accounts.MicrosoftActiveDirectory.mail\\r\\n}\\r\\ngetValue();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }

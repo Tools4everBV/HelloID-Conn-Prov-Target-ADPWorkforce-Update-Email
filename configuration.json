@@ -30,6 +30,19 @@
     }
   },
   {
+    "key": "CertificateBase64",
+    "type": "textarea",
+    "defaultValue": "",
+    "templateOptions": {
+      "label": "Base64 string of certificate",
+      "type": "password",
+      "placeholder": "<Base64 string export of certificate>",
+      "description": "[System.Convert]::ToBase64String((get-content \"C:\\HelloID-ADP.pfx\" -Encoding Byte))",
+      "rows": 16,
+      "required": false
+    }
+  },
+  {
     "key": "CertificatePath",
     "type": "input",
     "templateOptions": {
