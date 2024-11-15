@@ -1,5 +1,9 @@
 # HelloID-Conn-Prov-Target-ADPWorkforce-UpdateEmail
 
+| :warning: Warning |
+|:---------------------------|
+| This script is for the new powershell connector. Make sure to use the mapping and correlation keys like mentionded in this readme. For more information, please read our [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems.html)
+
 | :information_source: Information |
 |:---------------------------|
 | This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.       |
@@ -63,6 +67,9 @@ The public key belonging to the certificate, must be send ADP. ADP will then gen
 
 ### Remarks
 
+### Correlation
+It is mandatory to enable the correlation in the correlation tab. The default value for "person correlation field" is " Custom.AssociateOID ". The default value for "Account Correlation field" is "AssociateOID".
+
 #### create.ps1
 
 The `create.ps1` does not create accounts but merely correlates a HelloID person with a ADP Worker and updates the emailaddress if nessecarry.
@@ -70,6 +77,16 @@ The `create.ps1` does not create accounts but merely correlates a HelloID person
 #### CustomField `Custom.AssociateOID`
 
 This connector uses the `Custom.AssociateOID` field from HelloID. This field must be created and mapped in the HelloID ADP Workforce source connector.
+
+### Mapping
+The mandatory and recommended field mapping is listed below. An export of the mapping can be found in MappingADPWorkforceUpdateEmail.json.
+
+| Name           | Create | Enable | Update | Disable | Delete | Store in account data | Used in Notification | Default mapping                            | Mandatory | Comment                                        |
+| -------------- | ------ | ------ | ------ | ------- | ------ | ------ | --------------------- | ------------------------------------------ | --------- | ---------------------------------------------- |
+| AssociateOID     | X      |        | X      |         |        | No            | No | Custom.AssociateOID       |   Yes     | AssociateOID from ADP | 
+| workerEmail | X      |        | X      |         |        | No  |  No| Emailaddress generated  |   Yes     | Generated email address |
+| workerId           | X       |        | X      |         |        | Yes              |  Yes   | ExternalID | Yes          | ExternalID from person  |
+ 
 
 #### EmailAddress
 
