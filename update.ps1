@@ -2,15 +2,11 @@
 # HelloID-Conn-Prov-Target-ADPWorkforce-UpdateEmail-Create
 # PowerShell V2
 #
-# Version: 2.0.1
+# Version: 1.0.0
 ############################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
-
-#TEST
-#$actionContext.References.Account = $personContext.Person.Custom.associateOID
-#$actionContext.DryRun = $false
 
 #region functions
 function Get-ADPAccessToken {
@@ -51,42 +47,31 @@ function Get-ADPAccessToken {
 }
 
 
-function Resolve-ADPWorkforceError {
+function Resolve-HTTPError {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
-        [object]
-        $ErrorObject
+        [Parameter(Mandatory,
+            ValueFromPipeline
+        )]
+        [object]$ErrorObject
     )
     process {
         $httpErrorObj = [PSCustomObject]@{
-            ScriptLineNumber = $ErrorObject.InvocationInfo.ScriptLineNumber
-            Line             = $ErrorObject.InvocationInfo.Line
-            ErrorDetails     = $ErrorObject.Exception.Message
-            FriendlyMessage  = $ErrorObject.Exception.Message
+            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
+            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
+            RequestUri            = $ErrorObject.TargetObject.RequestUri
+            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
+            ErrorMessage          = ''
         }
-        if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
-            $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
-            if ($null -ne $ErrorObject.Exception.Response) {
-                $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
-                if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
-                    $httpErrorObj.ErrorDetails = $streamReaderResponse
-                }
-            }
+        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
+            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
         }
-        try {
-            $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
-            # Make sure to inspect the error result object and add only the error message as a FriendlyMessage.
-            # $httpErrorObj.FriendlyMessage = $errorDetailsObject.message
-            $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails # Temporarily assignment
-        } catch {
-            $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+            $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
         }
         Write-Output $httpErrorObj
     }
 }
-
 #endregion
 
 try {
@@ -95,55 +80,42 @@ try {
         throw 'The account reference could not be found'
     }
 
-    Write-Information "Verifying if a ADPWorkfroce account for [$($personContext.Person.DisplayName)] exists"
-    
-    $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($($actionContext.Configuration.CertificatePath), $($actionContext.Configuration.CertificatePassword))
-    $accessToken = Get-ADPAccessToken -ClientID $($actionContext.Configuration.ClientID) -ClientSecret $($actionContext.Configuration.ClientSecret) -Certificate $certificate
+    if (-not[string]::IsNullOrEmpty($certificateBase64)) {
+        # Use for cloud PowerShell flow
+        $rawCertificate = [system.convert]::FromBase64String($certificateBase64)
+        $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($rawCertificate, $($actionContext.Configuration.CertificatePassword))
+    }
+    elseif (-not [string]::IsNullOrEmpty($certificatePathertificatePath)) {
+        # Use for local machine with certificate file
+        $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($($actionContext.Configuration.CertificatePath, $($actionContext.Configuration.CertificatePassword)))
+    }
+    else {
+        throw "No certificate configured"
+    }
 
+    $accessToken = Get-ADPAccessToken -ClientID $($actionContext.Configuration.ClientID) -ClientSecret $($actionContext.Configuration.ClientSecret) -Certificate $certificate
     $headers = @{
         "Authorization" = "Bearer $($accessToken.access_token)"
     }
 
-        $splatParams = @{
-            Uri         = "$($actionContext.Configuration.BaseUrl)/hr/v2/worker-demographics/$($actionContext.References.Account)"
-            Method      = 'GET'
-            Headers     = $headers
-            Certificate = $certificate
-        }
-        $responseGetUser = Invoke-RestMethod @splatParams
+    Write-Information "Verifying if a ADPWorkforce account for [$($personContext.Person.DisplayName)] exists"
+    $splatParams = @{
+        Uri         = "$($actionContext.Configuration.BaseUrl)/hr/v2/worker-demographics/$($actionContext.References.Account)"
+        Method      = 'GET'
+        Headers     = $headers
+        Certificate = $certificate
+    }
+    $correlatedAccount = Invoke-RestMethod @splatParams
 
-    if ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -ne $actionContext.Data.workerEmail) {
+    if ($correlatedAccount.Workers[0].businessCommunication.emails[0].emailUri -ne $actionContext.Data.workerEmail) {
         $action = 'Update'
-        $msg = "$action ADPWorkforce E-mail address: [$($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri)] to [$($actionContext.Data.workerEmail)] for: [$($personContext.Person.DisplayName)] will be executed during enforcement"
+        $dryRunMessage = "$action ADPWorkforce E-mail address: [$($correlatedAccount.Workers[0].businessCommunication.emails[0].emailUri)] to [$($actionContext.Data.workerEmail)] for: [$($personContext.Person.DisplayName)] will be executed during enforcement"
     }
-    elseif ($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri -eq $actionContext.Data.workerEmail) {
+    elseif ($responscorrelatedAccounteGetUser.Workers[0].businessCommunication.emails[0].emailUri -eq $actionContext.Data.workerEmail) {
         $action = 'Exit'
-        $msg = "E-mail address: [$($actionContext.Data.workerEmail)] for: [$($personContext.Person.DisplayName)] does not require an update"
+        $dryRunMessage = "E-mail address: [$($actionContext.Data.workerEmail)] for: [$($personContext.Person.DisplayName)] does not require an update"
     }
-
-
-    $correlatedAccount = $responseGetUser
-    $outputContext.PreviousData = $responseGetUser
-
-    # Always compare the account against the current account in target system
-    if ($null -ne $correlatedAccount) {
-        $splatCompareProperties = @{
-            ReferenceObject  = $correlatedAccount.PSObject.Properties
-            DifferenceObject = $actionContext.Data.PSObject.Properties
-        }
-        $propertiesChanged = Compare-Object @splatCompareProperties -PassThru | Where-Object { $_.SideIndicator -eq '=>' }
-        if ($propertiesChanged) {
-            $action = 'UpdateAccount'
-            $dryRunMessage = "Account property(s) required to update: $($propertiesChanged.Name -join ', ')"
-        } else {
-            $action = 'NoChanges'
-            $dryRunMessage = 'No changes will be made to the account during enforcement'
-        }
-    } else {
-        $action = 'NotFound'
-        $dryRunMessage = "ADPWorkforce account for: [$($personContext.Person.DisplayName)] not found. Possibly deleted."
-    }
-
+    $outputContext.PreviousData = $correlatedAccount
 
     # Add a message and the result of each of the validations showing what will happen during enforcement
     if ($actionContext.DryRun -eq $true) {
@@ -180,7 +152,7 @@ try {
                             }
                         })
                 } | ConvertTo-Json -Depth 10
-    
+
                 $splatParams = @{
                     Uri         = "$($actionContext.Configuration.BaseUrl)/events/hr/v1/worker.business-communication.email.change"
                     Method      = 'POST'
@@ -195,13 +167,13 @@ try {
                         $outputContext.AccountReference = $responseGetUser.Workers[0].associateOID
                         $outputContext.Success = $true
                         $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                Message = "Updated E-mail address for: $($personContext.Person.DisplayName) from: [$($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri)] to: [$($actionContext.Data.workerEmail)]"
-                                IsError = $false
-                            })
+                            Message = "Updated E-mail address for: $($personContext.Person.DisplayName) from: [$($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri)] to: [$($actionContext.Data.workerEmail)]"
+                            IsError = $false
+                        })
                     }
                 }
             }
-    
+
             'NoChanges' {
                 $outputContext.Success = $true
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
@@ -226,7 +198,7 @@ try {
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObj = Resolve-ADPWorkforceError -ErrorObject $ex
+        $errorObj = Resolve-HTTPError -ErrorObject $ex
         $auditMessage = "Could not update ADPWorkforce account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     } else {
