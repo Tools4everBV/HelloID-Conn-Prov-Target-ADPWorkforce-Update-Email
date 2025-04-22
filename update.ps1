@@ -182,7 +182,7 @@ try {
                 if (-not($actionContext.DryRun -eq $true)) {
                     $responseUpdateUser = Invoke-RestMethod @splatParams
                     if ($responseUpdateUser.events[0].eventStatusCode.codeValue -eq 'submitted') {
-                        $outputContext.AccountReference = $correlatedAccount.Workers[0].workerid.idvalue
+                        $outputContext.AccountReference = $correlatedAccount.Workers[0].associateOID
                         $outputContext.Success = $true
                         $outputContext.AuditLogs.Add([PSCustomObject]@{
                                 Message = "Updated E-mail address for: $($personContext.Person.DisplayName) to: [$($actionContext.Data.workerEmail)]"

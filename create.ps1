@@ -118,7 +118,7 @@ try {
         Certificate = $certificate
     }
     $correlatedAccount = Invoke-RestMethod @splatParams
-    if ($correlatedAccount.Workers[0].idValue -eq $($correlationValue)) {
+    if ($correlatedAccount.Workers[0].associateOID -eq $($correlationValue)) {
         # If the E-mail address in HelloID matches with the E-mail address in ADPWorkforce -> Correlate
         Write-Information "Verifying if the E-mail address for: [$($personContext.Person.DisplayName)] must be updated" -verbose
         if ($correlatedAccount.Workers[0].businessCommunication.emails[0].emailUri -eq $actionContext.Data.workerEmail) {
@@ -187,7 +187,7 @@ try {
                 }
                 $responseUpdateUser = Invoke-RestMethod @splatParams
                 if ($responseUpdateUser.events[0].eventStatusCode.codeValue -eq 'submitted') {
-                    $outputContext.AccountReference = $correlatedAccount.Workers[0].workerid.idvalue
+                    $outputContext.AccountReference = $correlatedAccount.Workers[0].associateOID
                     $outputContext.success = $true
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
                         Message = "Correlated ADPWorkforce account and updated E-mail address for: $($personContext.Person.DisplayName) to: [$($actionContext.Data.workerEmail)]"
