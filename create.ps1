@@ -2,7 +2,7 @@
 # HelloID-Conn-Prov-Target-ADPWorkforce-UpdateEmail-Create
 # PowerShell V2
 #
-# Version: 1.0.0
+# Version: 1.0.1
 ############################################################
 
 # Enable TLS1.2
@@ -79,14 +79,14 @@ try {
     # Initial Assignments
     $outputContext.AccountReference = 'Currently not available'
 
-    if (-not[string]::IsNullOrEmpty($certificateBase64)) {
+    if (-not[string]::IsNullOrEmpty($actionContext.Configuration.CertificateBase64)) {
         # Use for cloud PowerShell flow
-        $rawCertificate = [system.convert]::FromBase64String($certificateBase64)
+        $rawCertificate = [system.convert]::FromBase64String($actionContext.Configuration.CertificateBase64)
         $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($rawCertificate, $($actionContext.Configuration.CertificatePassword))
     }
-    elseif (-not [string]::IsNullOrEmpty($certificatePathertificatePath)) {
+    elseif (-not [string]::IsNullOrEmpty($actionContext.Configuration.CertificatePath)) {
         # Use for local machine with certificate file
-        $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($($actionContext.Configuration.CertificatePath, $($actionContext.Configuration.CertificatePassword)))
+        $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($actionContext.Configuration.CertificatePath, $actionContext.Configuration.CertificatePassword)
     }
     else {
         throw "No certificate configured"
@@ -110,9 +110,9 @@ try {
         }
     }
 
-    Write-Verbose "Verify if ADPWorkforce account for: [$($personContext.Person.DisplayName)] exists"
+    Write-Information "Verify if ADPWorkforce account for: [$($personContext.Person.DisplayName)] exists"
     $splatParams = @{
-        Uri         = "$($actionContext.Configuration.BaseUrl)/hr/v2/worker-demographics/$($correlationValue)"
+        Uri         = "$($actionContext.Configuration.BaseUrl)/hr/v2/workers/$($correlationValue)"
         Method      = 'GET'
         Headers     = $headers
         Certificate = $certificate
@@ -120,7 +120,7 @@ try {
     $correlatedAccount = Invoke-RestMethod @splatParams
     if ($correlatedAccount.Workers[0].associateOID -eq $($correlationValue)) {
         # If the E-mail address in HelloID matches with the E-mail address in ADPWorkforce -> Correlate
-        Write-Verbose "Verifying if the E-mail address for: [$($personContext.Person.DisplayName)] must be updated" -verbose
+        Write-Information "Verifying if the E-mail address for: [$($personContext.Person.DisplayName)] must be updated" -verbose
         if ($correlatedAccount.Workers[0].businessCommunication.emails[0].emailUri -eq $actionContext.Data.workerEmail) {
             $action = 'Correlate'
         } # If the E-mail address in HelloID differs from the E-mail address in ADPWorkforce -> CorrelateUpdate
@@ -139,7 +139,7 @@ try {
     if (-not($actionContext.DryRun -eq $true)) {
         switch ($action) {
             'Correlate' {
-                Write-Verbose "Correlating ADPWorkforce account for: [$($personContext.Person.DisplayName)]"
+                Write-Information "Correlating ADPWorkforce account for: [$($personContext.Person.DisplayName)]"
                 $outputContext.AccountReference = $responseGetUser.Workers[0].associateOID
                 $outputContext.success = $true
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
@@ -150,7 +150,7 @@ try {
             }
 
             'Correlate-Update' {
-                Write-Verbose "Correlating and updating ADPWorkforce account for: [$($personContext.Person.DisplayName)]"
+                Write-Information "Correlating and updating ADPWorkforce account for: [$($personContext.Person.DisplayName)]"
                 $body = @{
                     events = @(@{
                             eventNameCode = @{
@@ -190,7 +190,7 @@ try {
                     $outputContext.AccountReference = $correlatedAccount.Workers[0].associateOID
                     $outputContext.success = $true
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Message = "Correlated ADPWorkforce account and updated E-mail address for: $($personContext.Person.DisplayName) from: [$($responseGetUser.Workers[0].businessCommunication.emails[0].emailUri)] to: [$($actionContext.Data.workerEmail)]"
+                        Message = "Correlated ADPWorkforce account and updated E-mail address for: $($personContext.Person.DisplayName) to: [$($actionContext.Data.workerEmail)]"
                         IsError = $false
                     })
                 }
